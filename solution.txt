@@ -1,0 +1,61 @@
+NED Student Portal:
+const jwt = require('jsonwebtoken');
+const nedPrivateKey = 'ned_private_key';
+const kohaPublicKey = 'koha_public_key';
+
+// generate JWT token
+app.get('/generateToken', (req, res) => {
+  const payload = {
+    username: 'example_username',
+    email: 'example_email@example.com'
+  };
+  const token = jwt.sign(payload, nedPrivateKey, { expiresIn: '1h' });
+  res.json({ token });
+});
+
+// endpoint to retrieve Koha's public key
+app.get('/getKohaPublicKey', (req, res) => {
+  res.json({ publicKey: kohaPublicKey });
+});
+
+Koha User Portal:
+const axios = require('axios');
+const jwt = require('jsonwebtoken');
+const kohaPrivateKey = 'koha_private_key';
+
+app.get('/redirectToKoha', (req, res) => {
+  // retrieve token from NED Student Portal
+  const token = req.query.token;
+
+  // retrieve Koha's public key from NED Student Portal
+  axios.get('http://nedstudentportal/getKohaPublicKey')
+    .then(response => {
+      const kohaPublicKey = response.data.publicKey;
+
+      // verify token using Koha's public key
+      jwt.verify(token, kohaPublicKey, (err, decoded) => {
+        if (err) {
+          // redirect to login page on NED Student Portal if token is not valid
+          res.redirect('http://nedstudentportal/login');
+        } else {
+          // generate new token using Koha's private key and redirect to necessary page on Koha User Portal
+          const payload = {
+            username: decoded.username,
+            email: decoded.email
+          };
+          const newToken = jwt.sign(payload, kohaPrivateKey, { expiresIn: '1h' });
+          res.redirect(`http://kohauserportal/home?token=${newToken}`);
+        }
+      });
+    })
+    .catch(error => {
+      console.error(error);
+      res.status(500).send('Error retrieving Koha public key from NED Student Portal');
+    });
+});
+
+The private keys nedPrivateKey and kohaPrivateKey are kept secret on their respective servers, while the public key kohaPublicKey is shared between the servers. This ensures that NED Student Portal is the only one that can generate valid JWT tokens, while Koha User Portal can verify the tokens using NED Student Portal's public key. When Koha User Portal needs to generate a new token, it uses its own private key kohaPrivateKey to sign the payload.
+
+This code implements a token-based authentication flow between two servers: NED Student Portal and Koha User Portal. The NED Student Portal generates a JSON Web Token (JWT) using its private key, and provides an endpoint for Koha User Portal to retrieve its public key. Koha User Portal then sends a request to NED Student Portal to retrieve the JWT using the generated token, and uses the public key from NED Student Portal to verify the token. If the token is valid, Koha User Portal generates a new JWT using its private key and the payload from the original token, and redirects the user to the necessary page on the Koha User Portal with the new token appended as a query parameter.
+
+To be more specific, the NED Student Portal provides an endpoint at /generateToken that creates a new JWT using the jsonwebtoken library with the payload of username and email. The NED Student Portal also provides an endpoint at /getKohaPublicKey that sends the Koha User Portal's public key to the Koha User Portal when requested. The Koha User Portal sends a request to the NED Student Portal at /redirectToKoha with the generated token as a query parameter. The Koha User Portal retrieves Koha's public key using a GET request to the NED Student Portal's /getKohaPublicKey endpoint, and uses it to verify the token with the jsonwebtoken library. If the token is valid, Koha User Portal generates a new token using the Koha User Portal's private key and the payload from the original token. Finally, Koha User Portal redirects the user to the necessary page on Koha User Portal with the new token appended as a query parameter at /home.
